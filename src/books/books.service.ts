@@ -47,8 +47,14 @@ export class BooksService {
   }
 
   async update(id: string, updateBookDto: any) {
-    // ค้นหาด้วย ID และอัปเดตด้วยข้อมูลใหม่
-    // { returnDocument: 'after' } เพื่อให้มันคืนค่าข้อมูลที่อัปเดตแล้วกลับมา (แก้ Warning ที่เคยเจอ)
+    // 🚀 เพิ่มตัวดักจับตรงนี้
+    if (updateBookDto.stock) {
+      const { total, available } = updateBookDto.stock;
+      if (available > total) {
+        throw new BadRequestException('จำนวนหนังสือพร้อมใช้งาน ห้ามมากกว่าสต็อกทั้งหมด');
+      }
+    }
+
     const updatedBook = await this.bookModel.findByIdAndUpdate(
       id,
       updateBookDto,

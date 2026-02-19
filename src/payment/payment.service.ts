@@ -9,26 +9,48 @@ export class PaymentsService {
   constructor(
     @InjectModel(Payment.name) private paymentModel: Model<PaymentDocument>,
     @InjectModel(Rental.name) private rentalModel: Model<RentalDocument>,
-  ) {}
+  ) { }
 
-  // STEP 1: ลูกค้าแจ้งโอนเงิน
   async createPayment(rentalId: string, amount: number, slipUrl: string) {
     const payment = await this.paymentModel.create({ rentalId, amount, slipUrl });
-    
-    // อัปเดตสถานะที่ฝั่ง Rental ทันที
-    await this.rentalModel.findByIdAndUpdate(rentalId, { 
-      paymentStatus: 'verification' 
+    await this.rentalModel.findByIdAndUpdate(rentalId, {
+      paymentStatus: 'verification'
     });
-    
     return payment;
   }
 
-  // STEP 2: แอดมินดูรายการรอตรวจ
-  async findAllPending() {
-    return this.paymentModel.find({ status: 'verification' }).populate('rentalId').exec();
+  // ✅ แก้ไข: เพิ่มการ Populate ข้อมูลแบบซ้อนกัน (Deep Populate)
+  async findAllPending(dateString?: string) {
+    let query: any = {};
+
+    if (dateString) {
+      // 📅 สร้างช่วงเวลาเริ่ม-จบของวันที่เลือก
+      const targetDate = new Date(dateString);
+      const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+      query = {
+        createdAt: { $gte: startOfDay, $lte: endOfDay },
+        // 🚀 ดึงทั้งรายการที่รอตรวจ และรายการที่ตรวจแล้ว (paid/rejected) ของวันนั้น
+        status: { $in: ['verification', 'paid', 'rejected', 'refunded'] }
+      };
+    } else {
+      // ถ้าไม่ระบุวัน ให้ดึงเฉพาะรายการที่ค้างตรวจสอบ (verification) ทั้งหมด
+      query = { status: 'verification' };
+    }
+
+    return this.paymentModel.find(query)
+      .populate({
+        path: 'rentalId',
+        populate: [
+          { path: 'userId', select: 'username' },
+          { path: 'bookId', select: 'title' }
+        ]
+      })
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
-  // STEP 2.1: แอดมินตรวจสอบสลิป
   async verifyPayment(paymentId: string, isApproved: boolean) {
     const status = isApproved ? 'paid' : 'rejected';
     const payment = await this.paymentModel.findByIdAndUpdate(paymentId, { status }, { new: true });
@@ -37,10 +59,9 @@ export class PaymentsService {
       throw new NotFoundException('Payment not found');
     }
 
-    // อัปเดตสถานะที่ฝั่ง Rental ตามผลการตรวจ
     const rentalPaymentStatus = isApproved ? 'paid' : 'pending';
-    await this.rentalModel.findByIdAndUpdate(payment.rentalId, { 
-      paymentStatus: rentalPaymentStatus 
+    await this.rentalModel.findByIdAndUpdate(payment.rentalId, {
+      paymentStatus: rentalPaymentStatus
     });
 
     return payment;

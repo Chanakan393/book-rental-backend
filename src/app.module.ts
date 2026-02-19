@@ -22,7 +22,7 @@ import { PaymentModule } from './payment/payment.module';
     }),
     // ตั้งค่า rate limiting โดยใช้ ThrottlerModule
     ThrottlerModule.forRoot([ { ttl: 60_000, // 1 minute
-    limit: 5, // 5 requests per minute
+    limit: 60, // 5 requests per minute
     },
   ]),
     PaymentModule,

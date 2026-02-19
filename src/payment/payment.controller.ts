@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, UseInterceptors, UploadedFile, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, UseInterceptors, UploadedFile, UseGuards, Query } from '@nestjs/common';
 import { PaymentsService } from './payment.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -8,7 +8,7 @@ import { AdminGuard } from '../common/guards/admin.guard';
 
 @Controller('payment')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentsService) {}
+  constructor(private readonly paymentService: PaymentsService) { }
 
   @Post('upload')
   @UseGuards(JwtAuthGuard)
@@ -28,8 +28,8 @@ export class PaymentController {
 
   @Get('pending')
   @UseGuards(JwtAuthGuard, AdminGuard)
-  findAllPending() {
-    return this.paymentService.findAllPending();
+  findAllPending(@Query('date') date?: string) { // 🚀 รับ Query Param ชื่อ date
+    return this.paymentService.findAllPending(date);
   }
 
   @Patch('verify/:id')

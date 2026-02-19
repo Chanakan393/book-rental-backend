@@ -1,12 +1,15 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose'; // ✅ 1. เพิ่ม Types เข้ามา
+import { Model } from 'mongoose';
 import { Rental, RentalDocument } from './entities/rental.entity';
 import { Book, BookDocument } from '../books/entities/book.entity';
 import { Payment, PaymentDocument } from '../payment/entities/payment.entity';
 
 @Injectable()
 export class RentalsService {
+  findOverdueRentals() {
+    throw new Error('Method not implemented.');
+  }
   constructor(
     @InjectModel(Rental.name) private rentalModel: Model<RentalDocument>,
     @InjectModel(Book.name) private bookModel: Model<BookDocument>,
@@ -58,66 +61,75 @@ export class RentalsService {
     }
 
     rental.status = 'rented';
-    rental.borrowDate = new Date();
+    rental.borrowDate = new Date(); // รีเซ็ตวันยืมเป็นวันที่มารับของจริง
     return rental.save();
   }
 
-  // 3. คืนหนังสือ (rented -> returned)
+  // 3. คืนหนังสือ (rented -> returned) พร้อมคำนวณค่าปรับ
   async returnBook(rentalId: string) {
     const rental = await this.rentalModel.findById(rentalId);
-    if (!rental || rental.status === 'returned') throw new BadRequestException('รายการไม่ถูกต้อง');
+    if (!rental || rental.status !== 'rented') {
+      throw new BadRequestException('รายการไม่ถูกต้อง หรือหนังสือไม่ได้อยู่ในสถานะกำลังเช่า');
+    }
 
+    const now = new Date();
+    const dueDate = new Date(rental.dueDate);
+    let fine = 0;
+
+    // 🚀 Logic คำนวณค่าปรับ: ถ้าเวลาปัจจุบัน > วันกำหนดคืน
+    if (now > dueDate) {
+      // คำนวณส่วนต่างของเวลา (มิลลิวินาที) และแปลงเป็นจำนวนวัน
+      const diffTime = Math.abs(now.getTime() - dueDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      fine = diffDays * 10; // 💸 สมมติค่าปรับวันละ 10 บาท
+    }
+
+    // อัปเดตสต็อกหนังสือ (+1)
     await this.bookModel.findByIdAndUpdate(rental.bookId, { $inc: { "stock.available": 1 } });
+
+    // บันทึกข้อมูลการคืน
     rental.status = 'returned';
-    rental.returnDate = new Date();
+    rental.returnDate = now;
+    rental.fine = fine; // บันทึกลงฟิลด์ fine ใน Entity
+
     return rental.save();
   }
 
+  // 4. ยกเลิกรายการจอง (ปรับปรุงใหม่ตามความต้องการ)
   async cancelRental(rentalId: string) {
     const rental = await this.rentalModel.findById(rentalId);
     if (!rental) throw new NotFoundException('ไม่พบรายการเช่า');
 
-    if (rental.status !== 'booked') {
-      throw new BadRequestException('สามารถยกเลิกได้เฉพาะรายการที่ยังไม่ได้มารับหนังสือเท่านั้น');
+    // 🛡️ เช็คเงื่อนไข: ยกเลิกได้ตราบใดที่ยังไม่ได้มารับของ (rented)
+    if (['rented', 'returned', 'cancelled'].includes(rental.status)) {
+      throw new BadRequestException('ไม่สามารถยกเลิกรายการได้เนื่องจากรับหนังสือไปแล้วหรือดำเนินการเสร็จสิ้นแล้ว');
     }
 
-    // 🔥 FIX: กำหนดสถานะเป้าหมายรอไว้ก่อน
-    let targetPaymentStatus = '';     // สถานะที่จะแก้ใน Payment (refunded / rejected)
-    let targetRentalPaymentStatus = ''; // สถานะที่จะแก้ใน Rental (refund_pending / cancelled)
+    // จัดการสถานะการเงิน
+    let targetPaymentStatus = '';
+    let targetRentalPaymentStatus = '';
 
-    if (['paid', 'verification'].includes(rental.paymentStatus)) {
+    if (rental.paymentStatus === 'paid' || rental.paymentStatus === 'verification') {
+      // ถ้าจ่ายแล้วหรือกำลังตรวจสลิป ให้เปลี่ยนเป็น "รอคืนเงิน"
       targetPaymentStatus = 'refunded';
       targetRentalPaymentStatus = 'refund_pending';
     } else {
-      targetPaymentStatus = 'rejected'; // หรือ cancelled ถ้าคุณมี enum นี้
+      targetPaymentStatus = 'rejected';
       targetRentalPaymentStatus = 'cancelled';
     }
 
-    // 🔥 FIX: ยิงอัปเดต 2 ครั้ง (ดักจับทุกรูปแบบ ID)
-    // รอบที่ 1: หาด้วย ObjectId (แบบมาตรฐาน)
-    let updateResult = await this.paymentModel.findOneAndUpdate(
+    // อัปเดตสถานะใน Payment Collection
+    await this.paymentModel.findOneAndUpdate(
       { rentalId: rental._id },
-      { status: targetPaymentStatus },
-      { new: true }
+      { status: targetPaymentStatus }
     );
 
-    // รอบที่ 2: ถ้าไม่เจอ... หาด้วย String (เผื่อข้อมูลเก่าเก็บเป็นตัวหนังสือ)
-    if (!updateResult) {
-      console.log('⚠️ รอบแรกไม่เจอ กำลังลองหาแบบ String...');
-      updateResult = await this.paymentModel.findOneAndUpdate(
-        { rentalId: rental._id.toString() },
-        { status: targetPaymentStatus },
-        { new: true }
-      );
-    }
-
-    console.log('✅ ผลสรุปการอัปเดต Payment:', updateResult ? 'สำเร็จ (เปลี่ยนเป็น ' + targetPaymentStatus + ')' : 'ไม่พบข้อมูล Payment ในระบบ');
-
     // อัปเดตฝั่ง Rental
-    rental.paymentStatus = targetRentalPaymentStatus;
+    rental.paymentStatus = targetRentalPaymentStatus as any;
     rental.status = 'cancelled';
 
-    // คืนสต็อกหนังสือ
+    // คืนสต็อกหนังสือ (+1 กลับเข้าคลัง)
     await this.bookModel.findByIdAndUpdate(rental.bookId, {
       $inc: { "stock.available": 1 }
     });
@@ -125,7 +137,45 @@ export class RentalsService {
     return rental.save();
   }
 
+  // ✅ ตรวจสอบฟังก์ชันนี้: ต้องมั่นใจว่ามีการ populate 'bookId'
   async findMyHistory(userId: string) {
-    return this.rentalModel.find({ userId }).populate('userId', 'username email').populate('bookId', 'title').sort({ createdAt: -1 }).exec();
+    return this.rentalModel.find({ userId })
+      .populate('userId', 'username email phoneNumber address') // ✨ เพิ่มให้ดึง address และเบอร์โทรมาด้วย
+      .populate('bookId', 'title coverImage') // ✨ ดึงข้อมูลหนังสือมาโชว์หน้าปก
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  async getDashboardReports(dateString?: string) {
+    let query: any = {};
+    if (dateString && dateString !== 'all') {
+      const targetDate = new Date(dateString);
+      const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+      query = { createdAt: { $gte: startOfDay, $lte: endOfDay } };
+    }
+
+    const transactions = await this.rentalModel.find(query)
+      .populate('userId', 'username email')
+      .populate('bookId', 'title coverImage')
+      .sort({ createdAt: -1 })
+      .exec();
+
+    const activeBookings = await this.rentalModel.countDocuments({ ...query, status: 'booked' });
+    const activeRentals = await this.rentalModel.countDocuments({ ...query, status: 'rented' });
+    const overdueRentals = await this.rentalModel.countDocuments({
+      ...query,
+      status: 'rented',
+      dueDate: { $lt: new Date() }
+    });
+
+    const revenue = transactions
+      .filter(r => r.paymentStatus === 'paid')
+      .reduce((sum, r) => sum + r.cost, 0);
+
+    return {
+      summaryData: { activeBookings, activeRentals, overdueRentals, revenue },
+      transactions
+    };
   }
 }
