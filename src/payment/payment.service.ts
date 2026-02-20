@@ -19,24 +19,22 @@ export class PaymentsService {
     return payment;
   }
 
-  // ✅ แก้ไข: เพิ่มการ Populate ข้อมูลแบบซ้อนกัน (Deep Populate)
   async findAllPending(dateString?: string) {
     let query: any = {};
 
     if (dateString) {
-      // 📅 สร้างช่วงเวลาเริ่ม-จบของวันที่เลือก
       const targetDate = new Date(dateString);
       const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
       const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
       query = {
         createdAt: { $gte: startOfDay, $lte: endOfDay },
-        // 🚀 ดึงทั้งรายการที่รอตรวจ และรายการที่ตรวจแล้ว (paid/rejected) ของวันนั้น
-        status: { $in: ['verification', 'paid', 'rejected', 'refunded'] }
+        // 🚀 เพิ่ม: ให้ดึงสถานะ refund_verification มาแสดงในรายการตรวจสอบด้วย
+        status: { $in: ['verification', 'paid', 'rejected', 'refunded', 'refund_rejected', 'refund_verification'] }
       };
     } else {
-      // ถ้าไม่ระบุวัน ให้ดึงเฉพาะรายการที่ค้างตรวจสอบ (verification) ทั้งหมด
-      query = { status: 'verification' };
+      // 🚀 เพิ่ม: กรณีดึงทั้งหมด ให้ดึงทั้งรอตรวจสลิป และรอตรวจคืนเงิน
+      query = { status: { $in: ['verification', 'refund_verification'] } };
     }
 
     return this.paymentModel.find(query)
@@ -52,18 +50,24 @@ export class PaymentsService {
   }
 
   async verifyPayment(paymentId: string, isApproved: boolean) {
-    const status = isApproved ? 'paid' : 'rejected';
-    const payment = await this.paymentModel.findByIdAndUpdate(paymentId, { status }, { new: true });
+    const payment = await this.paymentModel.findById(paymentId);
+    if (!payment) throw new NotFoundException('Payment not found');
 
-    if (!payment) {
-      throw new NotFoundException('Payment not found');
+    const rental = await this.rentalModel.findById(payment.rentalId);
+    if (!rental) throw new NotFoundException('Rental not found');
+
+    // 🔄 กรณีจัดการการ "ขอคืนเงิน" (Refund)
+    if (rental.paymentStatus === 'refund_verification') {
+      rental.paymentStatus = isApproved ? 'refunded' : 'refund_rejected';
+      payment.status = isApproved ? 'refunded' : 'refund_rejected'; 
+    } 
+    // 💸 กรณีตรวจสลิปปกติ
+    else {
+      payment.status = isApproved ? 'paid' : 'rejected';
+      rental.paymentStatus = isApproved ? 'paid' : 'pending'; 
     }
 
-    const rentalPaymentStatus = isApproved ? 'paid' : 'pending';
-    await this.rentalModel.findByIdAndUpdate(payment.rentalId, {
-      paymentStatus: rentalPaymentStatus
-    });
-
-    return payment;
+    await rental.save();
+    return payment.save();
   }
 }

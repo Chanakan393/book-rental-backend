@@ -61,7 +61,7 @@ export class RentalsService {
     }
 
     rental.status = 'rented';
-    rental.borrowDate = new Date(); // รีเซ็ตวันยืมเป็นวันที่มารับของจริง
+    rental.borrowDate = new Date();
     return rental.save();
   }
 
@@ -76,72 +76,54 @@ export class RentalsService {
     const dueDate = new Date(rental.dueDate);
     let fine = 0;
 
-    // 🚀 Logic คำนวณค่าปรับ: ถ้าเวลาปัจจุบัน > วันกำหนดคืน
     if (now > dueDate) {
-      // คำนวณส่วนต่างของเวลา (มิลลิวินาที) และแปลงเป็นจำนวนวัน
       const diffTime = Math.abs(now.getTime() - dueDate.getTime());
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      fine = diffDays * 10; // 💸 สมมติค่าปรับวันละ 10 บาท
+      fine = diffDays * 10;
     }
 
-    // อัปเดตสต็อกหนังสือ (+1)
     await this.bookModel.findByIdAndUpdate(rental.bookId, { $inc: { "stock.available": 1 } });
 
-    // บันทึกข้อมูลการคืน
     rental.status = 'returned';
     rental.returnDate = now;
-    rental.fine = fine; // บันทึกลงฟิลด์ fine ใน Entity
+    rental.fine = fine;
 
     return rental.save();
   }
 
-  // 4. ยกเลิกรายการจอง (ปรับปรุงใหม่ตามความต้องการ)
+// 4. ยกเลิกรายการจอง
   async cancelRental(rentalId: string) {
     const rental = await this.rentalModel.findById(rentalId);
     if (!rental) throw new NotFoundException('ไม่พบรายการเช่า');
 
-    // 🛡️ เช็คเงื่อนไข: ยกเลิกได้ตราบใดที่ยังไม่ได้มารับของ (rented)
     if (['rented', 'returned', 'cancelled'].includes(rental.status)) {
-      throw new BadRequestException('ไม่สามารถยกเลิกรายการได้เนื่องจากรับหนังสือไปแล้วหรือดำเนินการเสร็จสิ้นแล้ว');
+      throw new BadRequestException('ไม่สามารถยกเลิกได้เนื่องจากรับหนังสือไปแล้ว');
     }
 
-    // จัดการสถานะการเงิน
-    let targetPaymentStatus = '';
-    let targetRentalPaymentStatus = '';
+    if (rental.paymentStatus !== 'pending' && rental.paymentStatus !== 'cancelled') {
 
-    if (rental.paymentStatus === 'paid' || rental.paymentStatus === 'verification') {
-      // ถ้าจ่ายแล้วหรือกำลังตรวจสลิป ให้เปลี่ยนเป็น "รอคืนเงิน"
-      targetPaymentStatus = 'refunded';
-      targetRentalPaymentStatus = 'refund_pending';
+      rental.paymentStatus = 'refund_verification';
+
+      // 🚀 แก้ไข: เปลี่ยนมาค้นหาด้วย String ธรรมดา เพราะใน DB คุณเซฟเป็น String
+      await this.paymentModel.findOneAndUpdate(
+        { rentalId: rental._id.toString() }, // ✅ แปลง _id ให้เป็น String ให้ตรงกับที่เก็บใน payment
+        { $set: { status: 'refund_verification' } }
+      ).exec();
+
     } else {
-      targetPaymentStatus = 'rejected';
-      targetRentalPaymentStatus = 'cancelled';
+      rental.paymentStatus = 'cancelled';
     }
 
-    // อัปเดตสถานะใน Payment Collection
-    await this.paymentModel.findOneAndUpdate(
-      { rentalId: rental._id },
-      { status: targetPaymentStatus }
-    );
-
-    // อัปเดตฝั่ง Rental
-    rental.paymentStatus = targetRentalPaymentStatus as any;
     rental.status = 'cancelled';
-
-    // คืนสต็อกหนังสือ (+1 กลับเข้าคลัง)
-    await this.bookModel.findByIdAndUpdate(rental.bookId, {
-      $inc: { "stock.available": 1 }
-    });
+    await this.bookModel.findByIdAndUpdate(rental.bookId, { $inc: { "stock.available": 1 } });
 
     return rental.save();
   }
 
-  // ✅ ตรวจสอบฟังก์ชันนี้: ต้องมั่นใจว่ามีการ populate 'bookId'
   async findMyHistory(userId: string) {
     return this.rentalModel.find({ userId })
-      .populate('userId', 'username email phoneNumber address') // ✨ เพิ่มให้ดึง address และเบอร์โทรมาด้วย
-      .populate('bookId', 'title coverImage') // ✨ ดึงข้อมูลหนังสือมาโชว์หน้าปก
+      .populate('userId', 'username email phoneNumber address')
+      .populate('bookId', 'title coverImage')
       .sort({ createdAt: -1 })
       .exec();
   }

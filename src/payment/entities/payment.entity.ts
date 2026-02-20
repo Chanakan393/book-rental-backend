@@ -11,9 +11,16 @@ export class Payment {
   @Prop({ required: true })
   amount: number;
 
-  @Prop({ 
-    default: 'verification', 
-    enum: ['verification', 'paid', 'rejected', 'refunded'] 
+  @Prop({
+    default: 'verification',
+    enum: [
+      'verification',
+      'paid',
+      'rejected',
+      'refunded',
+      'refund_rejected',
+      'refund_verification'
+    ]
   })
   status: string;
 

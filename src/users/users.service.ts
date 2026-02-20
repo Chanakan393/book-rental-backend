@@ -10,8 +10,27 @@ import * as bcrypt from 'bcrypt';
 export class UsersService {
   constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) { }
 
+  // 🛡️ ฟังก์ชันช่วยตรวจสอบและล้างค่าเบอร์โทรศัพท์
+  private validateAndCleanPhoneNumber(phoneNumber: string): string {
+    if (!phoneNumber) return '';
+    
+    // ✅ 1. ล้างช่องว่างและขีดออกให้เหลือแต่ตัวเลข
+    const cleanPhone = phoneNumber.replace(/[- ]/g, '');
+
+    // ✅ 2. เช็ค Regex: ขึ้นด้วย 06, 08, 09 และต้องครบ 10 หลัก
+    const phoneRegex = /^(06|08|09)\d{8}$/;
+    if (!phoneRegex.test(cleanPhone)) {
+      throw new BadRequestException('เบอร์โทรศัพท์ไม่ถูกต้อง (ต้องขึ้นด้วย 06, 08, 09 และมี 10 หลักเท่านั้น)');
+    }
+    
+    return cleanPhone;
+  }
+
   async create(createUserDto: CreateUserDto): Promise<User> {
-    const { email, username, password } = createUserDto;
+    const { email, password } = createUserDto;
+
+    // ✅ ตรวจสอบและล้างค่าเบอร์โทรศัพท์ก่อนบันทึก
+    createUserDto.phoneNumber = this.validateAndCleanPhoneNumber(createUserDto.phoneNumber);
 
     // 1. เช็คว่า Email ซ้ำไหม
     const emailExists = await this.userModel.findOne({ email });
@@ -64,6 +83,11 @@ export class UsersService {
     const user = await this.userModel.findById(id);
     if (!user) throw new NotFoundException('ไม่พบข้อมูลผู้ใช้งาน');
 
+    // ✅ ถ้ามีการส่งเบอร์โทรศัพท์มา ให้ตรวจสอบและล้างค่าก่อน
+    if (updateUserDto.phoneNumber) {
+      updateUserDto.phoneNumber = this.validateAndCleanPhoneNumber(updateUserDto.phoneNumber);
+    }
+
     // 🚀 ดักเช็ค Email ซ้ำ (ถ้ามีการเปลี่ยน Email)
     if (updateUserDto.email && updateUserDto.email !== user.email) {
       const emailExists = await this.userModel.findOne({ email: updateUserDto.email });
@@ -94,7 +118,7 @@ export class UsersService {
   }
 
   // ==========================================
-  //  ฟังก์ชันใหม่สำหรับ Admin และ Profile
+  //  ฟังก์ชันสำหรับ Admin และ Profile
   // ==========================================
 
   // ดึงรายชื่อสมาชิกทั้งหมด (ไม่เอา Password และ Hash) - สำหรับแอดมิน

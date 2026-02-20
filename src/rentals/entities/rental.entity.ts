@@ -35,7 +35,16 @@ export class Rental {
 
   @Prop({
     default: 'pending',
-    enum: ['pending', 'verification', 'paid', 'refund_pending', 'refunded', 'cancelled']
+    enum: [
+      'pending',
+      'verification',
+      'paid',
+      'refund_pending',
+      'refund_verification',
+      'refunded',
+      'refund_rejected',
+      'cancelled'
+    ]
   })
   paymentStatus: string;
 }

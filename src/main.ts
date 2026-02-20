@@ -1,35 +1,32 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
-import { NestExpressApplication } from '@nestjs/platform-express'; // 🚀 เพิ่มตัวนี้
-import { join } from 'path'; // 🚀 เพิ่มตัวนี้
 import helmet from 'helmet';
+import * as express from 'express';
+import { join } from 'path';
 
 async function bootstrap() {
-  process.env.TZ = 'Asia/Bangkok';
+  const app = await NestFactory.create(AppModule);
 
-  // ✅ เปลี่ยนมาใช้ NestExpressApplication เพื่อให้ใช้ useStaticAssets ได้
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  
-  app.use(helmet({
-    crossOriginResourcePolicy: false, // 🚀 ปิดเพื่อให้ Browser ยอมโหลดรูปจาก API
-  }));
-  
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
-  
-  // ✅ เปิดให้เข้าถึงไฟล์ในโฟลเดอร์ uploads ผ่าน URL (เช่น /uploads/slips/xxx.jpg)
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
-    prefix: '/uploads',
-  });
+  // 🚀 ส่วนที่เพิ่ม: เปิดให้เข้าถึงไฟล์ในโฟลเดอร์ uploads ผ่าน URL
+  // เช่น http://localhost:3000/uploads/slips/slip-xxx.jpg
+  app.use('/uploads', express.static(join(__dirname, '..', 'uploads')));
 
   app.enableCors({
-    origin: '*',
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: true, // หรือใส่เป็น ['http://localhost:3000', 'http://localhost:3001']
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
 
-  //เปลี่ยนจาก localhost
-  const port = process.env.PORT || 3000; 
-  await app.listen(port, '0.0.0.0');
+  // ปรับการตั้งค่า Helmet เพื่อให้ยอมรับรูปภาพจาก Resource ของเราเอง (Cross-Origin)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
+
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+  
+  await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
