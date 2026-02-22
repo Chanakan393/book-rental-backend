@@ -8,33 +8,37 @@ import { CreateBookDto } from './dto/create-book.dto';
 export class BooksService {
   constructor(@InjectModel(Book.name) private bookModel: Model<BookDocument>) { }
 
-  // 🛡️ เพิ่มฟังก์ชันดักจับตัวเลขติดลบ (ป้องกันฝั่ง Service)
+  // 🛡️ ป้องกันตัวเลขติดลบ เป็น 0 และความถูกต้องของราคา
   private validateBookNumbers(data: any) {
     if (data.stock) {
-      if (data.stock.total !== undefined && data.stock.total < 0) {
-        throw new BadRequestException('สต็อกทั้งหมดต้องไม่ติดลบ');
+      // 🚀 สต็อกรวมต้องมากกว่า 0 (คือ 1 ขึ้นไป)
+      if (data.stock.total !== undefined && data.stock.total <= 0) {
+        throw new BadRequestException('สต็อกทั้งหมดต้องมีอย่างน้อย 1 เล่ม');
       }
+      // 🚀 พร้อมใช้งาน ยอมให้เป็น 0 ได้ เพราะอาจจะถูกยืมหมด แต่ห้ามติดลบ
       if (data.stock.available !== undefined && data.stock.available < 0) {
         throw new BadRequestException('จำนวนหนังสือพร้อมใช้งานต้องไม่ติดลบ');
       }
     }
+    
     if (data.pricing) {
-      if (data.pricing.day3 !== undefined && data.pricing.day3 < 0) {
-        throw new BadRequestException('ราคาเช่า 3 วันต้องไม่ติดลบ');
-      }
-      if (data.pricing.day5 !== undefined && data.pricing.day5 < 0) {
-        throw new BadRequestException('ราคาเช่า 5 วันต้องไม่ติดลบ');
-      }
-      if (data.pricing.day7 !== undefined && data.pricing.day7 < 0) {
-        throw new BadRequestException('ราคาเช่า 7 วันต้องไม่ติดลบ');
+      const p = data.pricing;
+      // 🚀 ราคาต้องมากกว่า 0 (คือ 1 ขึ้นไป)
+      if (p.day3 !== undefined && p.day3 <= 0) throw new BadRequestException('ราคาเช่า 3 วันต้องมากกว่า 0 บาท');
+      if (p.day5 !== undefined && p.day5 <= 0) throw new BadRequestException('ราคาเช่า 5 วันต้องมากกว่า 0 บาท');
+      if (p.day7 !== undefined && p.day7 <= 0) throw new BadRequestException('ราคาเช่า 7 วันต้องมากกว่า 0 บาท');
+
+      // 🚀 เช็คความสมเหตุสมผลของราคา (3 วัน < 5 วัน < 7 วัน)
+      if (p.day3 !== undefined && p.day5 !== undefined && p.day7 !== undefined) {
+        if (p.day3 >= p.day5 || p.day5 >= p.day7) {
+          throw new BadRequestException('ราคาเช่าต้องสมเหตุสมผล: 3 วัน < 5 วัน < 7 วัน');
+        }
       }
     }
   }
 
   async create(createBookDto: CreateBookDto) {
-    // 🚀 ดักจับเลขติดลบก่อนสร้างหนังสือใหม่
     this.validateBookNumbers(createBookDto);
-
     const newBook = new this.bookModel(createBookDto);
     return newBook.save();
   }
@@ -77,13 +81,11 @@ export class BooksService {
   async update(id: string, updateBookDto: any) {
     if (!isValidObjectId(id)) throw new BadRequestException('รหัสหนังสือไม่ถูกต้อง');
     
-    // 🚀 ดักจับเลขติดลบก่อนอัปเดต
     this.validateBookNumbers(updateBookDto);
 
     if (updateBookDto.stock) {
       const book = await this.bookModel.findById(id);
       if (book) {
-        // ดึงค่าเก่ามาใช้เทียบถ้าไม่มีการส่งค่าใหม่มา
         const newTotal = updateBookDto.stock.total !== undefined ? updateBookDto.stock.total : book.stock.total;
         const newAvailable = updateBookDto.stock.available !== undefined ? updateBookDto.stock.available : book.stock.available;
 

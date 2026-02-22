@@ -1,10 +1,10 @@
-import { IsString, IsNumber, IsOptional, ValidateNested, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, ValidateNested, Min, IsArray } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // 1. สร้าง Class ย่อยสำหรับ Stock
 class StockDto {
   @IsNumber()
-  @Min(0)
+  @Min(1)
   total: number;
 
   @IsNumber()
@@ -35,8 +35,9 @@ export class CreateBookDto {
   @IsString()
   author: string;
 
-  @IsString()
-  category: string;
+  @IsArray()
+  @IsString({ each: true })
+  category: string[];
 
   @IsOptional()
   @IsString()

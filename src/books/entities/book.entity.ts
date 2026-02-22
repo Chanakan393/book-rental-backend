@@ -15,7 +15,7 @@ class Pricing {
   @Prop() day7: number;
 }
 
-@Schema({ timestamps: true, versionKey: false})
+@Schema({ timestamps: true, versionKey: false })
 export class Book {
   @Prop({ required: true })
   title: string;
@@ -23,8 +23,8 @@ export class Book {
   @Prop()
   author: string;
 
-  @Prop()
-  category: string;
+  @Prop({ type: [String], default: [] })
+  category: string[];
 
   @Prop()
   description: string;
