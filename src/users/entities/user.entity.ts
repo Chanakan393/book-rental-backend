@@ -5,20 +5,23 @@ export type UserDocument = User & Document;
 
 @Schema({ timestamps: true, versionKey: false })
 export class User {
-  @Prop({ required: true, unique: true, lowercase: true, trim: true }) 
+  @Prop({ required: true, unique: true, lowercase: true, trim: true })
   username: string;
 
-  @Prop({ required: true, unique: true }) 
+  @Prop({ required: true, unique: true })
   email: string;
 
   @Prop({ required: true })
   password: string;
 
-  @Prop({ required: true, unique: true }) 
+  @Prop({ required: true, unique: true })
   phoneNumber: string;
 
-  @Prop({ required: true }) 
+  @Prop({ required: true })
   address: string;
+
+  @Prop({ required: true })
+  zipcode: string;
 
   @Prop({ default: 'member', enum: ['member', 'admin'] })
   role: string;

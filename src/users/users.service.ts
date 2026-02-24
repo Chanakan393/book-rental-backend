@@ -22,41 +22,74 @@ export class UsersService {
     return cleanPhone;
   }
 
+  // 🚀 ฟังก์ชันตรวจสอบอักษรพิเศษในที่อยู่
+  // 🚀 ฟังก์ชันตรวจสอบอักษรพิเศษในที่อยู่
+  private validateAddress(address: string) {
+    if (address.trim().length < 10) {
+      throw new BadRequestException('ที่อยู่ต้องมีความยาวอย่างน้อย 10 ตัวอักษร');
+    }
+
+    // 🚀 เปลี่ยนมาใช้ ก-๛ เพื่อความครอบคลุม 100%
+    const addressRegex = /^[a-zA-Z0-9ก-๛\s/]+$/;
+    if (!addressRegex.test(address)) {
+      throw new BadRequestException('ที่อยู่ห้ามมีอักษรพิเศษ (อนุญาตเฉพาะ / และช่องว่างเท่านั้น)');
+    }
+  }
+
+  // 🚀 ฟังก์ชันตรวจสอบรหัสไปรษณีย์
+  private validateZipcode(zipcode: string) {
+    const zipRegex = /^\d{5}$/;
+    if (!zipRegex.test(zipcode)) {
+      throw new BadRequestException('รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลักเท่านั้น');
+    }
+  }
+
   private validateStringLengths(data: any) {
     if (data.username !== undefined) {
       const trimmedUsername = data.username.trim();
+
       if (typeof data.username !== 'string' || trimmedUsername.length < 1 || trimmedUsername.length > 20) {
-        throw new BadRequestException('ชื่อผู้ใช้งานต้องเป็นข้อความและมีความยาว 1-20 ตัวอักษร');
+        throw new BadRequestException('ชื่อผู้ใช้งานต้องมีความยาว 1-20 ตัวอักษร');
       }
+
+      // 🚀 เช็ค Username
+      const usernameRegex = /^[a-zA-Z0-9ก-๛]+$/;
+      if (!usernameRegex.test(trimmedUsername)) {
+        throw new BadRequestException('ชื่อผู้ใช้งานห้ามมีอักษรพิเศษหรือช่องว่าง');
+      }
+
       if (/^\d+$/.test(trimmedUsername)) {
-        throw new BadRequestException('ชื่อผู้ใช้งานไม่สามารถเป็นตัวเลขล้วนได้ กรุณาผสมตัวอักษรด้วย');
+        throw new BadRequestException('ชื่อผู้ใช้งานไม่สามารถเป็นตัวเลขล้วนได้');
       }
     }
+
     if (data.password !== undefined) {
       if (typeof data.password !== 'string' || data.password.length < 8 || data.password.length > 20) {
         throw new BadRequestException('รหัสผ่านต้องเป็นข้อความและมีความยาวระหว่าง 8 ถึง 20 ตัวอักษร');
       }
     }
+
     if (data.address !== undefined) {
-      if (typeof data.address !== 'string' || data.address.trim().length < 10) {
-        throw new BadRequestException('ที่อยู่ต้องเป็นข้อความและมีความยาวอย่างน้อย 10 ตัวอักษร');
-      }
+      this.validateAddress(data.address);
+    }
+
+    if (data.zipcode !== undefined) {
+      this.validateZipcode(data.zipcode);
     }
   }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     let { email, password, username } = createUserDto;
 
+    // ตรวจสอบความถูกต้องของข้อมูลทั้งหมด (รวม address และ zipcode)
     this.validateStringLengths(createUserDto);
 
-    // 🚀 จัดการ Case ของ Email และ Username
     email = email.toLowerCase().trim();
-    username = username.toLowerCase().trim(); // แปลงเป็นพิมพ์เล็กให้หมด
+    username = username.toLowerCase().trim();
 
     createUserDto.email = email;
     createUserDto.username = username;
 
-    // 🚀 เช็ค Username ซ้ำ (ตอนนี้เป็นพิมพ์เล็กหมดแล้ว จะเช็คเจอแน่นอน)
     const usernameExists = await this.userModel.findOne({ username });
     if (usernameExists) {
       throw new BadRequestException('ชื่อผู้ใช้งาน (Username) นี้ถูกใช้งานไปแล้ว');
@@ -75,7 +108,7 @@ export class UsersService {
       }
     }
 
-    const salt = await bcrypt.hash(password, 10); // หรือ genSalt แล้ว hash ตามเดิม
+    const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const newUser = new this.userModel({
@@ -87,52 +120,28 @@ export class UsersService {
     return newUser.save();
   }
 
-  async findByLogin(identifier: string): Promise<UserDocument | null> {
-    // 🚀 ดักจับทั้ง Username และ Email ให้เป็นพิมพ์เล็กก่อนไปหาใน DB
-    const lowerIdentifier = identifier.toLowerCase().trim();
-
-    return this.userModel.findOne({
-      $or: [
-        { email: lowerIdentifier },
-        { username: lowerIdentifier } // 👈 ปรับตรงนี้ให้หาจากตัวพิมพ์เล็กเหมือนกัน
-      ]
-    }).exec();
-  }
-
-  async findByIdWithRefresh(userId: string) {
-    return this.userModel.findById(userId).select('+refreshTokenHash').exec();
-  }
-
-  async setRefreshTokenHash(userId: string, refreshTokenHash: string | null) {
-    return this.userModel.updateOne({ _id: userId }, { refreshTokenHash }).exec();
-  }
-
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
     const user = await this.userModel.findById(id);
     if (!user) throw new NotFoundException('ไม่พบข้อมูลผู้ใช้งาน');
 
+    // ตรวจสอบความถูกต้องของข้อมูล (รวม address และ zipcode หากมีการส่งมาอัปเดต)
     this.validateStringLengths(updateUserDto);
 
-    // 🚀 1. ดัก Username ตอนอัปเดต
     if (updateUserDto.username) {
-      // บังคับเป็นพิมพ์เล็กและตัดช่องว่าง
       const lowerUsername = updateUserDto.username.toLowerCase().trim();
-
       if (lowerUsername !== user.username) {
         const usernameExists = await this.userModel.findOne({ username: lowerUsername });
         if (usernameExists) throw new BadRequestException('ชื่อผู้ใช้งานนี้ถูกใช้งานโดยผู้ใช้อื่นแล้ว');
-        updateUserDto.username = lowerUsername; // 👈 แทนที่ด้วยตัวพิมพ์เล็ก
+        updateUserDto.username = lowerUsername;
       }
     }
 
-    // 🚀 2. ดัก Email ตอนอัปเดต
     if (updateUserDto.email) {
       const lowerEmail = updateUserDto.email.toLowerCase().trim();
-
       if (lowerEmail !== user.email) {
         const emailExists = await this.userModel.findOne({ email: lowerEmail });
         if (emailExists) throw new BadRequestException('Email นี้ถูกใช้งานโดยผู้ใช้อื่นแล้ว');
-        updateUserDto.email = lowerEmail; // 👈 แทนที่ด้วยตัวพิมพ์เล็ก
+        updateUserDto.email = lowerEmail;
       }
     }
 
@@ -158,6 +167,22 @@ export class UsersService {
     return updatedUser;
   }
 
+  // --- ฟังก์ชันอื่นๆ คงเดิม ---
+  async findByLogin(identifier: string): Promise<UserDocument | null> {
+    const lowerIdentifier = identifier.toLowerCase().trim();
+    return this.userModel.findOne({
+      $or: [{ email: lowerIdentifier }, { username: lowerIdentifier }]
+    }).exec();
+  }
+
+  async findByIdWithRefresh(userId: string) {
+    return this.userModel.findById(userId).select('+refreshTokenHash').exec();
+  }
+
+  async setRefreshTokenHash(userId: string, refreshTokenHash: string | null) {
+    return this.userModel.updateOne({ _id: userId }, { refreshTokenHash }).exec();
+  }
+
   async findAll(): Promise<UserDocument[]> {
     return this.userModel
       .find({ role: 'member' })
@@ -170,7 +195,6 @@ export class UsersService {
       .findById(id)
       .select('-password -refreshTokenHash')
       .exec();
-
     if (!user) throw new BadRequestException('ไม่พบข้อมูลผู้ใช้งาน');
     return user;
   }
