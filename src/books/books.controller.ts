@@ -1,11 +1,11 @@
 import { Controller, Get, Post, Delete, Patch, Body, Param, UseGuards, Query, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { BooksService } from './books.service';
-import { CreateBookDto } from './dto/create-book.dto';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { UpdateBookDto } from './dto/update-book.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
 
 @Controller('books')
 export class BooksController {
@@ -60,12 +60,19 @@ export class BooksController {
   // 🚀 3. อัปเดตการอัปโหลดปกหนังสือขึ้น Cloudinary
   @Post('upload-cover')
   @UseGuards(JwtAuthGuard, AdminGuard)
-  @UseInterceptors(FileInterceptor('file')) // ลบ diskStorage ออก ให้มันเก็บใน Memory แทน
-  async uploadCover(@UploadedFile() file: Express.Multer.File) {
-    // โยนไฟล์ขึ้น Cloudinary ในโฟลเดอร์ชื่อ 'book-covers'
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadCover(
+    @UploadedFile(
+      // 🚀 2. ดักก่อนโยนขึ้น Cloudinary
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024, message: 'ขนาดไฟล์หน้าปกต้องไม่เกิน 2 MB' }),
+          new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/ }),
+        ],
+      }),
+    ) file: Express.Multer.File
+  ) {
     const result = await this.cloudinaryService.uploadFile(file, 'book-covers');
-
-    // ส่ง URL ตัวเต็มที่ได้จาก Cloudinary กลับไปให้หน้าบ้าน
     return { url: result.secure_url };
   }
 
