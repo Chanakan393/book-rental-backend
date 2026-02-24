@@ -1,29 +1,29 @@
-import { IsString, IsNumber, IsOptional, ValidateNested, Min, IsArray, MaxLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, ValidateNested, Min, IsArray, MaxLength, IsInt } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // 1. สร้าง Class ย่อยสำหรับ Stock
 class StockDto {
-  @IsNumber()
+  @IsInt()
   @Min(1)
   total: number;
 
-  @IsNumber()
+  @IsInt()
   @Min(0)
   available: number;
 }
 
 // 2. สร้าง Class ย่อยสำหรับ Pricing (3/5/7 วัน)
 class PricingDto {
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
   day3: number;
 
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
   day5: number;
 
-  @IsNumber()
-  @Min(0)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
   day7: number;
 }
 
