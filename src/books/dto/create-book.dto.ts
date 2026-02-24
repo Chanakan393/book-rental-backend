@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, ValidateNested, Min, IsArray } from 'class-validator';
+import { IsString, IsNumber, IsOptional, ValidateNested, Min, IsArray, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // 1. สร้าง Class ย่อยสำหรับ Stock
@@ -41,6 +41,7 @@ export class CreateBookDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(3000)
   description?: string;
 
   @ValidateNested()

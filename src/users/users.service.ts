@@ -12,13 +12,13 @@ export class UsersService {
 
   private validateAndCleanPhoneNumber(phoneNumber: string): string {
     if (!phoneNumber) return '';
-    
+
     const cleanPhone = phoneNumber.replace(/[- ]/g, '');
     const phoneRegex = /^(06|08|09)\d{8}$/;
     if (!phoneRegex.test(cleanPhone)) {
       throw new BadRequestException('เบอร์โทรศัพท์ไม่ถูกต้อง (ต้องขึ้นด้วย 06, 08, 09 และมี 10 หลักเท่านั้น)');
     }
-    
+
     return cleanPhone;
   }
 
@@ -49,16 +49,19 @@ export class UsersService {
 
     this.validateStringLengths(createUserDto);
 
+    // 🚀 จัดการ Case ของ Email และ Username
     email = email.toLowerCase().trim();
-    createUserDto.email = email;
+    username = username.toLowerCase().trim(); // แปลงเป็นพิมพ์เล็กให้หมด
 
-    // 🚀 เพิ่ม: เช็คว่า Username ซ้ำไหม
-    const usernameExists = await this.userModel.findOne({ username: username.trim() });
+    createUserDto.email = email;
+    createUserDto.username = username;
+
+    // 🚀 เช็ค Username ซ้ำ (ตอนนี้เป็นพิมพ์เล็กหมดแล้ว จะเช็คเจอแน่นอน)
+    const usernameExists = await this.userModel.findOne({ username });
     if (usernameExists) {
-      throw new BadRequestException('ชื่อผู้ใช้งาน (Username) นี้ถูกใช้งานไปแล้ว กรุณาใช้ชื่ออื่น');
+      throw new BadRequestException('ชื่อผู้ใช้งาน (Username) นี้ถูกใช้งานไปแล้ว');
     }
 
-    // เช็คว่า Email ซ้ำไหม
     const emailExists = await this.userModel.findOne({ email });
     if (emailExists) {
       throw new BadRequestException('Email นี้ถูกใช้งานไปแล้ว');
@@ -66,14 +69,13 @@ export class UsersService {
 
     if (createUserDto.phoneNumber) {
       createUserDto.phoneNumber = this.validateAndCleanPhoneNumber(createUserDto.phoneNumber);
-      // เช็คเบอร์โทรศัพท์ซ้ำไหม
       const phoneExists = await this.userModel.findOne({ phoneNumber: createUserDto.phoneNumber });
       if (phoneExists) {
         throw new BadRequestException('เบอร์โทรศัพท์นี้ถูกใช้งานไปแล้ว');
       }
     }
 
-    const salt = await bcrypt.genSalt(10);
+    const salt = await bcrypt.hash(password, 10); // หรือ genSalt แล้ว hash ตามเดิม
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const newUser = new this.userModel({
@@ -86,12 +88,13 @@ export class UsersService {
   }
 
   async findByLogin(identifier: string): Promise<UserDocument | null> {
+    // 🚀 ดักจับทั้ง Username และ Email ให้เป็นพิมพ์เล็กก่อนไปหาใน DB
     const lowerIdentifier = identifier.toLowerCase().trim();
-    
+
     return this.userModel.findOne({
       $or: [
         { email: lowerIdentifier },
-        { username: identifier } 
+        { username: lowerIdentifier } // 👈 ปรับตรงนี้ให้หาจากตัวพิมพ์เล็กเหมือนกัน
       ]
     }).exec();
   }
@@ -110,17 +113,26 @@ export class UsersService {
 
     this.validateStringLengths(updateUserDto);
 
-    // 🚀 เพิ่ม: เช็ค Username ซ้ำ ตอนแก้ไขโปรไฟล์
-    if (updateUserDto.username && updateUserDto.username.trim() !== user.username) {
-      const usernameExists = await this.userModel.findOne({ username: updateUserDto.username.trim() });
-      if (usernameExists) throw new BadRequestException('ชื่อผู้ใช้งาน (Username) นี้ถูกใช้งานโดยผู้ใช้อื่นแล้ว');
+    // 🚀 1. ดัก Username ตอนอัปเดต
+    if (updateUserDto.username) {
+      // บังคับเป็นพิมพ์เล็กและตัดช่องว่าง
+      const lowerUsername = updateUserDto.username.toLowerCase().trim();
+
+      if (lowerUsername !== user.username) {
+        const usernameExists = await this.userModel.findOne({ username: lowerUsername });
+        if (usernameExists) throw new BadRequestException('ชื่อผู้ใช้งานนี้ถูกใช้งานโดยผู้ใช้อื่นแล้ว');
+        updateUserDto.username = lowerUsername; // 👈 แทนที่ด้วยตัวพิมพ์เล็ก
+      }
     }
 
+    // 🚀 2. ดัก Email ตอนอัปเดต
     if (updateUserDto.email) {
-      updateUserDto.email = updateUserDto.email.toLowerCase().trim();
-      if (updateUserDto.email !== user.email) {
-        const emailExists = await this.userModel.findOne({ email: updateUserDto.email });
+      const lowerEmail = updateUserDto.email.toLowerCase().trim();
+
+      if (lowerEmail !== user.email) {
+        const emailExists = await this.userModel.findOne({ email: lowerEmail });
         if (emailExists) throw new BadRequestException('Email นี้ถูกใช้งานโดยผู้ใช้อื่นแล้ว');
+        updateUserDto.email = lowerEmail; // 👈 แทนที่ด้วยตัวพิมพ์เล็ก
       }
     }
 
@@ -139,12 +151,10 @@ export class UsersService {
 
     const updatedUser = await this.userModel
       .findByIdAndUpdate(id, { $set: updateUserDto }, { new: true })
-      .select('-password -refreshTokenHash') 
+      .select('-password -refreshTokenHash')
       .exec();
 
-    if (!updatedUser) {
-      throw new NotFoundException('ไม่พบข้อมูลผู้ใช้งาน');
-    }
+    if (!updatedUser) throw new NotFoundException('ไม่พบข้อมูลผู้ใช้งาน');
     return updatedUser;
   }
 
