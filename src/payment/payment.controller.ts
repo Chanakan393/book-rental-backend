@@ -6,6 +6,7 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import { CreatePaymentDto } from './dto/create-payment.dto';
 
 @ApiTags('Payments (ระบบแจ้งชำระเงิน)')
 @Controller('payment')
@@ -15,15 +16,15 @@ export class PaymentController {
     private readonly cloudinaryService: CloudinaryService 
   ) { }
 
-  @ApiBearerAuth()
+@ApiBearerAuth()
   @ApiOperation({ summary: 'อัปโหลดสลิปการโอนเงิน' })
   @Post('upload')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file')) 
+  // 🎯 เปลี่ยนจาก body: { ... } เป็น CreatePaymentDto
   async create(
-    @Body() body: { rentalId: string, amount: number },
+    @Body() createPaymentDto: CreatePaymentDto, 
     @UploadedFile(
-      // เช็คว่าไฟล์เกิน 2MB ไหม และเป็นไฟล์รูปภาพจริงหรือเปล่า
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024, message: 'ขนาดไฟล์สลิปต้องไม่เกิน 2 MB' }),
@@ -32,10 +33,15 @@ export class PaymentController {
       }),
     ) file: Express.Multer.File
   ) {
-    // โยนไฟล์ขึ้น Cloudinary แล้วเอา URL สลิปที่ได้ ไปบันทึกลงฐานข้อมูลต่อ
     const result = await this.cloudinaryService.uploadFile(file, 'payment-slips');
     const slipUrl = result.secure_url;
-    return this.paymentService.createPayment(body.rentalId, body.amount, slipUrl);
+    
+    // 🎯 ดึงค่าจาก createPaymentDto มาใช้แทน body
+    return this.paymentService.createPayment(
+      createPaymentDto.rentalId, 
+      createPaymentDto.amount, 
+      slipUrl
+    );
   }
 
   @ApiBearerAuth()

@@ -7,6 +7,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import { CreateBookDto } from './dto/create-book.dto';
 
 @ApiTags('Books (ระบบจัดการหนังสือ)')
 @Controller('books')
@@ -24,7 +25,7 @@ export class BooksController {
   @Get()
   findAll(
     @Query('search') search: string,
-    @Query('category') category: string 
+    @Query('category') category: string
   ) {
     return this.booksService.findAll(search, category);
   }
@@ -43,7 +44,8 @@ export class BooksController {
   @ApiOperation({ summary: 'เพิ่มหนังสือใหม่ (Admin Only)' })
   @UseGuards(JwtAuthGuard, AdminGuard)
   @Post()
-  create(@Body() createBookDto: any) {
+  // 🎯 เปลี่ยนจาก any เป็น CreateBookDto เพื่อให้ Swagger โชว์ช่องกรอกข้อมูล
+  create(@Body() createBookDto: CreateBookDto) {
     return this.booksService.create(createBookDto);
   }
 

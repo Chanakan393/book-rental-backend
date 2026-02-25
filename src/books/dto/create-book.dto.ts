@@ -1,58 +1,45 @@
-import { IsString, IsNumber, IsOptional, ValidateNested, Min, IsArray, MaxLength, IsInt, ArrayMinSize } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNumber, IsOptional, ValidateNested, Min, IsArray, MaxLength, IsInt } from 'class-validator';
 import { Type } from 'class-transformer';
 
-// Class ย่อยสำหรับ Stock
 class StockDto {
-  @IsInt()
-  @Min(1)
-  total: number;
+  @ApiProperty({ example: 10 })
+  @IsInt() @Min(1) total: number;
 
-  @IsInt()
-  @Min(0)
-  available: number;
+  @ApiProperty({ example: 10 })
+  @IsInt() @Min(0) available: number;
 }
 
-// Class ย่อยสำหรับ Pricing (3/5/7 วัน)
 class PricingDto {
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1)
-  day3: number;
+  @ApiProperty({ example: 50 })
+  @IsNumber() @Min(1) day3: number;
 
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1)
-  day5: number;
+  @ApiProperty({ example: 80 })
+  @IsNumber() @Min(1) day5: number;
 
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(1)
-  day7: number;
+  @ApiProperty({ example: 100 })
+  @IsNumber() @Min(1) day7: number;
 }
 
-// Class หลัก
 export class CreateBookDto {
-  @IsString()
-  title: string;
+  @ApiProperty({ example: 'Blue Lock เล่ม 1' })
+  @IsString() title: string;
 
-  @IsString()
-  author: string;
+  @ApiProperty({ example: 'Muneyuki Kaneshiro' })
+  @IsString() author: string;
 
-  @IsArray()
-  @IsString({ each: true })
-  @ArrayMinSize(1, { message: 'ต้องเลือกหมวดหมู่อย่างน้อย 1 หมวดหมู่' })
-  category: string[];
+  @ApiProperty({ example: ['Sport', 'Shonen'], type: [String] })
+  @IsArray() @IsString({ each: true }) category: string[];
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(3000)
-  description?: string;
+  @ApiProperty({ example: 'การ์ตูนฟุตบอลสุดมันส์', required: false })
+  @IsOptional() @IsString() @MaxLength(3000) description?: string;
 
-  @ValidateNested()
-  @Type(() => StockDto)
-  stock: StockDto;
+  @ApiProperty({ type: StockDto })
+  @ValidateNested() @Type(() => StockDto) stock: StockDto;
 
-  @ValidateNested()
-  @Type(() => PricingDto)
-  pricing: PricingDto;
+  @ApiProperty({ type: PricingDto })
+  @ValidateNested() @Type(() => PricingDto) pricing: PricingDto;
 
-  @IsString()
-  coverImage: string;
+  @ApiProperty({ example: 'https://image-url.com/cover.jpg' })
+  @IsString() coverImage: string;
 }

@@ -2,6 +2,7 @@ import { Controller, Post, Body, UnauthorizedException, UseGuards, Get, Req } fr
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
+import { LoginDto } from './dto/login.dto';
 
 @ApiTags('Authentication (ระบบล็อกอิน)')
 @Controller('auth')
@@ -19,9 +20,9 @@ export class AuthController {
   @ApiOperation({ summary: 'เข้าสู่ระบบ (Login)' })
   @ApiResponse({ status: 200, description: 'ล็อกอินสำเร็จ คืนค่า Access Token' })
   @ApiResponse({ status: 401, description: 'Username หรือ Password ผิด' })
-  @Post('login')
-  async login(@Body() body: { account: string; password: string }) {
-    const user = await this.authService.validateUser(body.account, body.password);
+@Post('login')
+  async login(@Body() loginDto: LoginDto) {
+    const user = await this.authService.validateUser(loginDto.account, loginDto.password);
     if (!user) {
       throw new UnauthorizedException('ข้อมูลเข้าสู่ระบบไม่ถูกต้อง');
     }

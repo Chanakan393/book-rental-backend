@@ -3,6 +3,7 @@ import { RentalsService } from './rentals.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { CreateRentalDto } from './dto/create-rental.dto'
 
 @ApiTags('Rentals (ระบบการเช่าหนังสือ)')
 @ApiBearerAuth()
@@ -18,8 +19,14 @@ export class RentalsController {
   @ApiResponse({ status: 201, description: 'สร้างรายการเช่าสำเร็จ' })
   @UseGuards(JwtAuthGuard)
   @Post('rent')
-  async create(@Req() req, @Body() body: { bookId: string; days: number }) {
-    return this.rentalsService.rentBook(req.user.userId, body.bookId, body.days);
+  @UseGuards(JwtAuthGuard)
+  async create(@Req() req, @Body() createRentalDto: CreateRentalDto) {
+    // 🎯 ดึง userId จาก Token (req.user.userId) ปลอดภัยกว่าการรับจาก Body
+    return this.rentalsService.rentBook(
+      req.user.userId,
+      createRentalDto.bookId,
+      createRentalDto.days
+    );
   }
 
   @ApiOperation({ summary: 'ลูกค้าดูประวัติการเช่าของตัวเอง' })
