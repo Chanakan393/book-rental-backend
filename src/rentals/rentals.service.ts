@@ -5,6 +5,11 @@ import { Rental, RentalDocument } from './entities/rental.entity';
 import { Book, BookDocument } from '../books/entities/book.entity';
 import { Payment, PaymentDocument } from '../payment/entities/payment.entity';
 
+
+interface RentalWithFine extends Record<string, any> {
+  currentFine: number;
+}
+
 @Injectable()
 export class RentalsService {
   findOverdueRentals() {
@@ -106,7 +111,7 @@ export class RentalsService {
     if (todayStart > dueDateStart) {
       const diffTime = Math.abs(todayStart.getTime() - dueDateStart.getTime());
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // คำนวณว่าเลยมาแล้วกี่วัน
-      fine = diffDays * 100; 
+      fine = diffDays * 100;
     }
 
     const book = await this.bookModel.findById(rental.bookId);
@@ -156,16 +161,33 @@ export class RentalsService {
     return rental.save();
   }
 
-  async findMyHistory(userId: string) {
-    return this.rentalModel.find({ userId })
+  async findMyHistory(userId: string): Promise<RentalWithFine[]> {
+    const rentals = await this.rentalModel.find({ userId })
       .populate('userId', 'username email phoneNumber address')
       .populate('bookId', 'title coverImage')
       .sort({ createdAt: -1 })
       .exec();
-  }
 
+    const now = new Date();
+    const todayStart = new Date(now.setHours(0, 0, 0, 0));
+
+    return rentals.map(rental => {
+      // 🚀 2. ใช้ as unknown เพื่อล้าง Type เดิม และแก้ตัวแดง
+      const rentalObj = rental.toObject() as unknown as RentalWithFine;
+      const dueDateStart = new Date(new Date(rentalObj.dueDate).setHours(0, 0, 0, 0));
+
+      if (rentalObj.status === 'rented' && todayStart > dueDateStart) {
+        const diffTime = Math.abs(todayStart.getTime() - dueDateStart.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        rentalObj.currentFine = diffDays * 100; // 🎯 ปรับวันละ 100 บาท
+      } else {
+        rentalObj.currentFine = 0;
+      }
+      return rentalObj;
+    });
+  }
   // Dashboard สรุปยอดเช่าและรายได้ (สำหรับ Admin)
-  async getDashboardReports(dateString?: string) {
+async getDashboardReports(dateString?: string) {
     let query: any = {};
     if (dateString && dateString !== 'all') {
       const targetDate = new Date(dateString);
@@ -174,32 +196,37 @@ export class RentalsService {
       query = { createdAt: { $gte: startOfDay, $lte: endOfDay } };
     }
 
-    const transactions = await this.rentalModel.find(query)
+    const rentals = await this.rentalModel.find(query)
       .populate('userId', 'username email')
       .populate('bookId', 'title coverImage')
       .sort({ createdAt: -1 })
       .exec();
 
-    const activeBookings = await this.rentalModel.countDocuments({ ...query, status: 'booked' });
-    const activeRentals = await this.rentalModel.countDocuments({ ...query, status: 'rented' });
-
-    // เช็ค Overdue
     const now = new Date();
     const todayStart = new Date(now.setHours(0, 0, 0, 0));
-    const overdueRentals = await this.rentalModel.countDocuments({
-      ...query,
-      status: 'rented',
-      dueDate: { $lt: todayStart }
+
+    const transactions = rentals.map(rental => {
+      const rentalObj = rental.toObject() as unknown as RentalWithFine; // 🚀 แก้ตัวแดงใน Dashboard
+      const dueDateStart = new Date(new Date(rentalObj.dueDate).setHours(0, 0, 0, 0));
+
+      if (rentalObj.status === 'rented' && todayStart > dueDateStart) {
+        const diffTime = Math.abs(todayStart.getTime() - dueDateStart.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        rentalObj.currentFine = diffDays * 100;
+      } else {
+        rentalObj.currentFine = 0;
+      }
+      return rentalObj;
     });
 
-    // คำนวณรายได้: รวมยอดเฉพาะรายการที่ "จ่ายแล้ว" (paid) และ "ไม่ถูกยกเลิก"
+    const activeBookings = await this.rentalModel.countDocuments({ ...query, status: 'booked' });
+    const activeRentals = await this.rentalModel.countDocuments({ ...query, status: 'rented' });
+    const overdueRentals = await this.rentalModel.countDocuments({ ...query, status: 'rented', dueDate: { $lt: todayStart } });
+
     const revenue = transactions
       .filter(r => r.paymentStatus === 'paid' && r.status !== 'cancelled')
-      .reduce((sum, r) => sum + r.cost, 0);
+      .reduce((sum, r) => sum + r.cost + (r.fine || 0), 0);
 
-    return {
-      summaryData: { activeBookings, activeRentals, overdueRentals, revenue },
-      transactions
-    };
+    return { summaryData: { activeBookings, activeRentals, overdueRentals, revenue }, transactions };
   }
 }

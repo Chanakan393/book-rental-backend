@@ -25,7 +25,7 @@ export class RentalsController {
   @ApiOperation({ summary: 'ลูกค้าดูประวัติการเช่าของตัวเอง' })
   @UseGuards(JwtAuthGuard)
   @Get('my-history')
-  async getMyHistory(@Req() req) {
+  async getMyHistory(@Req() req): Promise<any> {
     return this.rentalsService.findMyHistory(req.user.userId);
   }
 
@@ -44,7 +44,7 @@ export class RentalsController {
   @ApiQuery({ name: 'date', required: false, description: 'ระบุวันที่ต้องการดู (YYYY-MM-DD)' })
   @UseGuards(JwtAuthGuard, AdminGuard)
   @Get('dashboard')
-  async getDashboardReports(@Query('date') date?: string) {
+  async getDashboardReports(@Query('date') date?: string): Promise<any> {
     return this.rentalsService.getDashboardReports(date);
   }
 
@@ -58,7 +58,7 @@ export class RentalsController {
   @ApiOperation({ summary: 'แอดมินดูประวัติการเช่าของลูกค้า (โดยระบุ userId)' })
   @UseGuards(JwtAuthGuard, AdminGuard)
   @Get('history/:userId')
-  async viewHistoryUser(@Param('userId') userId: string) {
+  async viewHistoryUser(@Param('userId') userId: string): Promise<any> {
     return this.rentalsService.findMyHistory(userId);
   }
 
