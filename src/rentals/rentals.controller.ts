@@ -55,6 +55,13 @@ export class RentalsController {
     return this.rentalsService.pickupBook(id);
   }
 
+  @ApiOperation({ summary: 'แอดมินดูประวัติการเช่าของลูกค้า (โดยระบุ userId)' })
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Get('history/:userId')
+  async viewHistoryUser(@Param('userId') userId: string) {
+    return this.rentalsService.findMyHistory(userId);
+  }
+
   @ApiOperation({ summary: 'แอดมินยืนยันการรับคืนหนังสือ (และคำนวณค่าปรับอัตโนมัติ)' })
   @UseGuards(JwtAuthGuard, AdminGuard)
   @Patch(':id/return')
