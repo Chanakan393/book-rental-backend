@@ -96,6 +96,18 @@ export class BooksService {
 
   async remove(id: string) {
     if (!isValidObjectId(id)) throw new BadRequestException('รหัสหนังสือไม่ถูกต้อง');
+
+    // 🚀 1. เช็คก่อนว่ามีลูกค้าจอง (booked) หรือกำลังเช่า (rented) อยู่ไหม
+    const activeRentals = await this.rentalModel.countDocuments({
+      bookId: id,
+      status: { $in: ['booked', 'rented'] }
+    });
+
+    // 🚀 2. ถ้ามีรายการค้างอยู่ ห้ามลบเด็ดขาด!
+    if (activeRentals > 0) {
+      throw new BadRequestException(`ไม่สามารถลบหนังสือเล่มนี้ได้ เนื่องจากมีลูกค้าจองหรือเช่าอยู่ ${activeRentals} รายการ`);
+    }
+
     const result = await this.bookModel.findByIdAndDelete(id).exec();
 
     if (!result) {
